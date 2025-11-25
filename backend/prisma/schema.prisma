@@ -1,0 +1,135 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Tenant {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  plan      String     @default("free")
+  createdAt DateTime   @default(now())
+  users     User[]
+  clients   Client[]
+  invoices  Invoice[]
+  settings  TenantSettings?
+}
+
+model TenantSettings {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+  reminderIntervals String?  // JSON "[ -3, 0, 3, 7 ]"
+  whatsappTemplate  String?
+  emailTemplate     String?
+  createdAt         DateTime @default(now())
+}
+
+model User {
+  id        String    @id @default(cuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  name      String?
+  email     String    @unique
+  password  String?
+  role      UserRole  @default(OWNER)
+  createdAt DateTime  @default(now())
+
+  invoicesCreated Invoice[] @relation("UserInvoices") // ✅ opposite relation
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Client {
+  id        String     @id @default(cuid())
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  name      String
+  email     String?
+  phone     String?
+  createdAt DateTime   @default(now())
+  invoices  Invoice[]
+}
+
+model Invoice {
+  id                String       @id @default(cuid())
+  tenantId          String
+  tenant            Tenant       @relation(fields: [tenantId], references: [id])
+  clientId          String?
+  client            Client?      @relation(fields: [clientId], references: [id])
+
+  createdById       String
+  createdBy         User         @relation("UserInvoices", fields: [createdById], references: [id])
+
+  invoiceNumber     String       @unique
+  amount            Float
+  currency          String       @default("INR")
+  dueDate           DateTime
+  issuedDate        DateTime     @default(now())
+  status            InvoiceStatus @default(PENDING)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  pdfUrl            String?
+  notes             String?
+  createdAt         DateTime     @default(now())
+  reminders         Reminder[]
+  payments          Payment[]
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Reminder {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+  method      ReminderMethod
+  scheduledAt DateTime
+  sentAt      DateTime?
+  status      ReminderStatus @default(PENDING)
+  attempt     Int @default(0)
+  createdAt   DateTime @default(now())
+}
+
+enum ReminderMethod {
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Payment {
+  id               String    @id @default(cuid())
+  invoiceId        String
+  invoice          Invoice   @relation(fields: [invoiceId], references: [id])
+  amount           Float
+  currency         String
+  provider         String
+  providerPaymentId String?
+  status           PaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  createdAt        DateTime @default(now())
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
